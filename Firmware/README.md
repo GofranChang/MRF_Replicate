@@ -8,8 +8,12 @@
 ## 一、环境配置
 1. 下载并安装[VSCode](https://code.visualstudio.com)；
 2. 打开VSCode，进入插件市场，搜索Chinese，安装简体中文插件，之后重启VSCode；
-![图片](image/plugin.png)
-![img](image/Chinese.png)
+<img src="image/plugin.png" alt="插件市场" height="300">
+
+<img src="image/Chinese.png" alt="简体中文" height="300">
+
+<!-- ![图片](image/plugin.png)
+![img](image/Chinese.png) -->
 3. 重启后进入插件市场，搜索platformio，选择第一个结果安装，之后重启VSCode；
 ![img](image/platformio.png)
 
