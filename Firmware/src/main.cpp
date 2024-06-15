@@ -13,6 +13,7 @@ long oldPosition  = -999;
 void loop() {
     delay(10);
     MrfHardware::instance().set_film_counter();
+    MrfHardware::instance().set_light_meter();
 
     MrfHardware::instance().loop();
 }

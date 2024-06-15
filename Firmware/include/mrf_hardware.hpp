@@ -6,6 +6,7 @@
 #include <Adafruit_SSD1306.h>
 #include <Adafruit_MPU6050.h>
 #include <U8g2_for_Adafruit_GFX.h>
+#include <BH1750.h>
 #include <TFMPlus.h>
 
 #define SCREEN_WIDTH 128        // OLED _main_display width, in pixels
@@ -138,7 +139,22 @@ public:
     delay(1000);
 #endif
 
+#ifndef WITHOUT_BH1750
+    _light_meter.begin();
+#endif
+
     _last_activity_time = millis();
+  }
+
+  void loop() {
+    if (UiMode::UI_MAIN == _ui_mode) {
+      set_distance();
+#ifndef WITHOUT_MAIN_DISPLAY
+      draw_main_ui();
+#endif
+    }
+
+    draw_external_ui();
   }
 
   inline long get_encoder_pos() {
@@ -179,16 +195,63 @@ public:
     }
   }
 
-  void loop() {
-    if (UiMode::UI_MAIN == _ui_mode) {
-      set_distance();
-#ifndef WITHOUT_MAIN_DISPLAY
-      draw_main_ui();
-#endif
-    }
+  void set_light_meter() {
+    _lux = _light_meter.readLightLevel();
 
-    draw_external_ui();
+    if (_lux != _prev_lux) {
+      _prev_lux = _lux;
+    if (_lux <= 0) {
+      _shutter_speed = "Dark!";
+    } else {
+      if (_aperture == 0) {
+        cycle_apertures("up");
+      }
+
+      float speed = round(((_aperture * _aperture) * K) / (_lux * _iso) * 1000.0) / 1000.0;
+
+      struct SpeedRange {
+        float lower;
+        float upper;
+        const char *print_speed_range;
+      };
+
+      SpeedRange speed_ranges[] = {
+          {0.001, 0.002, "1/1000"},
+          {0.002, 0.004, "1/500"},
+          {0.004, 0.008, "1/250"},
+          {0.008, 0.016, "1/125"},
+          {0.016, 0.033, "1/60"},
+          {0.033, 0.066, "1/30"},
+          {0.066, 0.125, "1/15"},
+          {0.125, 0.250, "1/8"},
+          {0.250, 0.500, "1/4"},
+          {0.500, 1, "1/2"}};
+
+      char print_speed[10];
+      dtostrf(speed, 4, 1, print_speed);
+
+      for (int i = 0; i < sizeof(speed_ranges) / sizeof(speed_ranges[0]); i++)
+      {
+        if (speed_ranges[i].lower <= speed && speed < speed_ranges[i].upper)
+        {
+          strcpy(print_speed, speed_ranges[i].print_speed_range);
+          break;
+        }
+      }
+
+     
+      if (speed >= 1) {
+        char print_speed_raw[10];
+        dtostrf(speed, 4, 2, print_speed_raw);
+        _shutter_speed = strcat(print_speed_raw, " sec.");
+      } else {
+        _shutter_speed = strcat(print_speed, " sec.");
+      }
+       
+    }
   }
+}
+
 private:
   int_fast16_t get_focus_radius() {
     int minRadius = 4;
@@ -438,6 +501,26 @@ private:
   }
 #endif
 
+  void cycle_apertures(String direction) {
+    if (direction == "up") {
+      _aperture_index++;
+      if (_aperture_index >= sizeof(lenses[_selected_lens].apertures) / sizeof(lenses[_selected_lens].apertures[0])) {
+        _aperture_index = 0;
+      }
+      if (lenses[_selected_lens].apertures[_aperture_index] == 0) {
+        cycle_apertures("up");
+      }
+    } else if (direction == "down") {
+      _aperture_index--;
+      if (_aperture_index < 0) {
+        _aperture_index = sizeof(lenses[_selected_lens].apertures) / sizeof(lenses[_selected_lens].apertures[0]) - 1;
+      }
+      if (lenses[_selected_lens].apertures[_aperture_index] == 0) {
+        cycle_apertures("down");
+      }
+    }
+  }
+
 private:
   UiMode _ui_mode;
 
@@ -467,6 +550,15 @@ private:
   Adafruit_MPU6050 _mpu;
 #endif
 
+#ifndef WITHOUT_BH1750
+  BH1750 _light_meter;
+#endif
+  float _lux = 0.f;
+  float _prev_lux = 0.f;
+  String _shutter_speed = "...";
+  int _aperture_index = 0;
+  const int K = 20;
+
   int _film_counter;
 
   float _frame_progress = 0;
@@ -480,8 +572,6 @@ private:
 
   float _prev_aperture = -0.f;
   float _aperture = -0.f;
-
-  String _shutter_speed = "...";
 
   int _selected_lens = 1;
   int _selected_format = 3;
