@@ -2,12 +2,38 @@
 
 #include <Arduino.h>
 #include <Encoder.h>
+
+#ifndef WITHOUT_MAIN_DISPLAY
 #include <Adafruit_SH110X.h>
+#endif
+
+#ifndef WITHOUT_EXT_DISPLAY
 #include <Adafruit_SSD1306.h>
+#endif
+
+#ifndef WITHOUT_MAIN_DISPLAY && #ifnde WITHOUT_EXT_DISPLAY
+#define MRF_HAS_DISPLAY
+#endif
+
+#ifdef MRF_HAS_DISPLAY
+#include <U8g2_for_Adafruit_GFX.h> 
+#endif
+
+#ifndef WITHOUT_MPU
 #include <Adafruit_MPU6050.h>
-#include <U8g2_for_Adafruit_GFX.h>
+#endif
+
+#ifndef WITHOUT_BATTERY
+#include <MAX17043.h>
+#endif
+
+#ifndef WITHOUT_BH1750
 #include <BH1750.h>
+#endif
+
+#ifndef WITHOUT_LIDAR
 #include <TFMPlus.h>
+#endif
 
 #define SCREEN_WIDTH 128        // OLED _main_display width, in pixels
 #define SCREEN_HEIGHT 128        // OLED _main_display height, in pixels
@@ -143,10 +169,18 @@ public:
     _light_meter.begin();
 #endif
 
+#ifndef WITHOUT_BATTERY
+    _fuel_gauge.begin(20, 4);
+    delay(500);
+#endif
+
     _last_activity_time = millis();
   }
 
   void loop() {
+    delay(500);
+    set_voltage();
+
     if (UiMode::UI_MAIN == _ui_mode) {
       set_distance();
 #ifndef WITHOUT_MAIN_DISPLAY
@@ -195,72 +229,90 @@ public:
     }
   }
 
+private:
+#ifndef WITHOUT_BH1750
+  BH1750 _light_meter;
+
   void set_light_meter() {
     _lux = _light_meter.readLightLevel();
 
     if (_lux != _prev_lux) {
       _prev_lux = _lux;
-    if (_lux <= 0) {
-      _shutter_speed = "Dark!";
-    } else {
-      if (_aperture == 0) {
-        cycle_apertures("up");
-      }
-
-      float speed = round(((_aperture * _aperture) * K) / (_lux * _iso) * 1000.0) / 1000.0;
-
-      struct SpeedRange {
-        float lower;
-        float upper;
-        const char *print_speed_range;
-      };
-
-      SpeedRange speed_ranges[] = {
-          {0.001, 0.002, "1/1000"},
-          {0.002, 0.004, "1/500"},
-          {0.004, 0.008, "1/250"},
-          {0.008, 0.016, "1/125"},
-          {0.016, 0.033, "1/60"},
-          {0.033, 0.066, "1/30"},
-          {0.066, 0.125, "1/15"},
-          {0.125, 0.250, "1/8"},
-          {0.250, 0.500, "1/4"},
-          {0.500, 1, "1/2"}};
-
-      char print_speed[10];
-      dtostrf(speed, 4, 1, print_speed);
-
-      for (int i = 0; i < sizeof(speed_ranges) / sizeof(speed_ranges[0]); i++)
-      {
-        if (speed_ranges[i].lower <= speed && speed < speed_ranges[i].upper)
-        {
-          strcpy(print_speed, speed_ranges[i].print_speed_range);
-          break;
-        }
-      }
-
-     
-      if (speed >= 1) {
-        char print_speed_raw[10];
-        dtostrf(speed, 4, 2, print_speed_raw);
-        _shutter_speed = strcat(print_speed_raw, " sec.");
+      if (_lux <= 0) {
+        _shutter_speed = "Dark!";
       } else {
-        _shutter_speed = strcat(print_speed, " sec.");
+        if (_aperture == 0) {
+          cycle_apertures("up");
+        }
+
+        float speed = round(((_aperture * _aperture) * K) / (_lux * _iso) * 1000.0) / 1000.0;
+
+        struct SpeedRange {
+          float lower;
+          float upper;
+          const char *print_speed_range;
+        };
+
+        SpeedRange speed_ranges[] = {
+            {0.001, 0.002, "1/1000"},
+            {0.002, 0.004, "1/500"},
+            {0.004, 0.008, "1/250"},
+            {0.008, 0.016, "1/125"},
+            {0.016, 0.033, "1/60"},
+            {0.033, 0.066, "1/30"},
+            {0.066, 0.125, "1/15"},
+            {0.125, 0.250, "1/8"},
+            {0.250, 0.500, "1/4"},
+            {0.500, 1, "1/2"}};
+
+        char print_speed[10];
+        dtostrf(speed, 4, 1, print_speed);
+
+        for (int i = 0; i < sizeof(speed_ranges) / sizeof(speed_ranges[0]); i++) {
+          if (speed_ranges[i].lower <= speed && speed < speed_ranges[i].upper) {
+            strcpy(print_speed, speed_ranges[i].print_speed_range);
+            break;
+          }
+        }
+
+        if (speed >= 1) {
+          char print_speed_raw[10];
+          dtostrf(speed, 4, 2, print_speed_raw);
+          _shutter_speed = strcat(print_speed_raw, " sec.");
+        } else {
+          _shutter_speed = strcat(print_speed, " sec.");
+        } 
       }
-       
     }
   }
-}
+#endif
 
-private:
-  int_fast16_t get_focus_radius() {
-    int minRadius = 4;
-    int maxRadius = 30;
+#ifndef WITHOUT_BATTERY
+  MAX17043 _fuel_gauge;
 
-    int radius = min(maxRadius, max(minRadius, abs(_distance - _lens_distance_raw)));
+  void set_voltage() {
+    if (_fuel_gauge.isSleeping()) {
+      _fuel_gauge.wake();
+    }
 
-    return radius;
+    float battery_voltage = _fuel_gauge.getBatteryVoltage();
+
+    // TODO: Modify to battery percent
+
+    // _bat_per = _max_lipo.cellPercent();
+    // if (_bat_per > 100) {
+    //   _bat_per = 100;
+    // }
+
+    // if (_bat_per != _prev_bat_per) {
+    //   _prev_bat_per = _bat_per;
+    // }
   }
+#endif
+
+#ifndef WITHOUT_LIDAR
+  TFMPlus _tfminiplus;
+  HardwareSerial _lidar_serial;
 
   String cm_to_readable(int cm) {
     if (cm < 100) {
@@ -268,6 +320,15 @@ private:
     } else {
       return String(float(cm) / 100, 1) + "m";
     }
+  }
+
+  int_fast16_t get_focus_radius() {
+    int minRadius = 4;
+    int maxRadius = 30;
+
+    int radius = min(maxRadius, max(minRadius, abs(_distance - _lens_distance_raw)));
+
+    return radius;
   }
 
   void set_distance() {
@@ -288,8 +349,12 @@ private:
       _distance_cm = "...";
     }
   }
+#endif
 
 #ifndef WITHOUT_MAIN_DISPLAY
+  Adafruit_SH1107 _main_display;
+  U8G2_FOR_ADAFRUIT_GFX _main_display_u8g2;
+
   void draw_main_ui() {
     _main_display.clearDisplay();
 
@@ -418,6 +483,9 @@ private:
 #endif
 
 #ifndef WITHOUT_EXT_DISPLAY
+  Adafruit_SSD1306 _ext_display;
+  U8G2_FOR_ADAFRUIT_GFX _ext_display_u8g2;
+
   void draw_external_ui() {
     int progessBarWidth = 90;
     int progressBarHeight = 17;
@@ -498,6 +566,9 @@ private:
 
     // sspixel.show();
     _ext_display.display();
+
+    // float battery = getBatteryPercentage();
+    // Serial.printf("BBBBBB %f\n", battery);
   }
 #endif
 
@@ -526,33 +597,15 @@ private:
 
   Encoder _encoder;
 
-#ifndef WITHOUT_MAIN_DISPLAY
-  Adafruit_SH1107 _main_display;
-  U8G2_FOR_ADAFRUIT_GFX _main_display_u8g2;
-#endif
-
-#ifndef WITHOUT_EXT_DISPLAY
-  Adafruit_SSD1306 _ext_display;
-  U8G2_FOR_ADAFRUIT_GFX _ext_display_u8g2;
-#endif
-
 #ifndef WITHOUT_ENCODER
   long _encoder_value;
   long _prev_encoder_value;
-#endif
-
-#ifndef WITHOUT_LIDAR
-  TFMPlus _tfminiplus;
-  HardwareSerial _lidar_serial;
 #endif
 
 #ifndef WITHOUT_MPU6050
   Adafruit_MPU6050 _mpu;
 #endif
 
-#ifndef WITHOUT_BH1750
-  BH1750 _light_meter;
-#endif
   float _lux = 0.f;
   float _prev_lux = 0.f;
   String _shutter_speed = "...";
@@ -576,6 +629,8 @@ private:
   int _selected_lens = 1;
   int _selected_format = 3;
 
+  int _bat_per = 0;
+
   // LiDAR distance
   int _prev_distance = 0;
   int16_t _distance = 0;    // Distance to object in centimeters
@@ -588,8 +643,6 @@ private:
   int _lens_sensor_reading = 0;
   int _lens_distance_raw = 0;
   String _lens_distance_cm = "...";
-
-  int _bat_per = 0;
 };
 
 }
